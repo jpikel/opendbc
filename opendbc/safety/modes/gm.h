@@ -185,6 +185,9 @@ static safety_config gm_init(uint16_t param) {
   // block PSCMStatus (0x184); forwarded through openpilot to hide an alert from the camera
   static const CanMsg GM_CAM_LONG_TX_MSGS[] = {{0x180, 0, 4, .check_relay = true}, {0x315, 0, 5, .check_relay = true}, {0x2CB, 0, 8, .check_relay = true}, {0x370, 0, 6, .check_relay = true},  // pt bus
                                                {0x184, 2, 8, .check_relay = true}};  // camera bus
+  // SDGM cars (e.g. Cadillac XT6 w/ SASCM) take the friction brake command (0x315) on the camera bus
+  static const CanMsg GM_SDGM_LONG_TX_MSGS[] = {{0x180, 0, 4, .check_relay = true}, {0x2CB, 0, 8, .check_relay = true}, {0x370, 0, 6, .check_relay = true},  // pt bus
+                                                {0x315, 2, 5, .check_relay = false}, {0x184, 2, 8, .check_relay = true}};  // camera bus
 #endif
 
 
@@ -215,10 +218,15 @@ static safety_config gm_init(uint16_t param) {
     ret = BUILD_SAFETY_CFG(gm_rx_checks, GM_CAM_TX_MSGS);
 #ifdef ALLOW_DEBUG
     const uint16_t GM_PARAM_HW_CAM_LONG = 2;
+    const uint16_t GM_PARAM_HW_SDGM = 8;
     const bool gm_cam_long = GET_FLAG(param, GM_PARAM_HW_CAM_LONG);
     gm_pcm_cruise = !gm_cam_long;
     if (gm_cam_long) {
-      ret = BUILD_SAFETY_CFG(gm_rx_checks, GM_CAM_LONG_TX_MSGS);
+      if (GET_FLAG(param, GM_PARAM_HW_SDGM)) {
+        ret = BUILD_SAFETY_CFG(gm_rx_checks, GM_SDGM_LONG_TX_MSGS);
+      } else {
+        ret = BUILD_SAFETY_CFG(gm_rx_checks, GM_CAM_LONG_TX_MSGS);
+      }
     }
 #endif
   } else {
