@@ -100,9 +100,12 @@ class CarInterface(CarInterfaceBase):
     ret.longitudinalTuning.kiBP = [5., 35.]
 
     if candidate in (CAMERA_ACC_CAR | SDGM_CAR):
-      ret.alphaLongitudinalAvailable = candidate not in SDGM_CAR
+      ret.alphaLongitudinalAvailable = candidate not in SDGM_CAR or candidate == CAR.CADILLAC_XT6
       ret.networkLocation = NetworkLocation.fwdCamera
       ret.radarUnavailable = True  # no radar
+      if candidate == CAR.CADILLAC_XT6:
+        # XT6 LRR radar object tracks are present on the obstacle bus (verified in logs), so use them
+        ret.radarUnavailable = False
       ret.pcmCruise = True
       ret.safetyConfigs[0].safetyParam |= GMSafetyFlags.HW_CAM.value
       ret.minEnableSpeed = -1 if candidate in SDGM_CAR else 5 * CV.KPH_TO_MS
