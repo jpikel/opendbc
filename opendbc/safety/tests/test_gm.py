@@ -224,6 +224,22 @@ class TestGmCameraLongitudinalSafety(GmLongitudinalBase, TestGmCameraSafetyBase)
     self.safety.init_tests()
 
 
+class TestGmSdgmCameraLongitudinalSafety(TestGmCameraLongitudinalSafety):
+  TX_MSGS = [[0x180, 0], [0x2CB, 0], [0x370, 0],  # pt bus
+             [0x315, 2], [0x184, 2]]  # camera bus
+  FWD_BLACKLISTED_ADDRS = {2: [0x180, 0x2CB, 0x370], 0: [0x184]}
+  RELAY_MALFUNCTION_ADDRS = {0: (0x180, 0x2CB, 0x370), 2: (0x184,)}
+  BRAKE_BUS = 2
+
+  def setUp(self):
+    self.packer = CANPackerSafety("gm_global_a_powertrain_generated")
+    self.packer_chassis = CANPackerSafety("gm_global_a_chassis")
+    self.safety = libsafety_py.libsafety
+    self.safety.set_safety_hooks(CarParams.SafetyModel.gm,
+                                 GMSafetyFlags.HW_CAM | GMSafetyFlags.HW_CAM_LONG | GMSafetyFlags.HW_SDGM | self.EXTRA_SAFETY_PARAM)
+    self.safety.init_tests()
+
+
 class TestGmCameraLongitudinalEVSafety(TestGmCameraLongitudinalSafety, TestGmEVSafetyBase):
   pass
 
