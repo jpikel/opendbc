@@ -97,6 +97,7 @@ CurvatureSteeringState curvature_state;
 
 
 int alternative_experience = 0;
+bool always_on_lateral = false;
 
 // time since safety mode has been changed
 uint32_t safety_mode_cnt = 0U;
@@ -319,13 +320,15 @@ static void generic_rx_checks(void) {
   gas_pressed_prev = gas_pressed;
 
   // exit controls on rising edge of brake press
-  if (brake_pressed && (!brake_pressed_prev || vehicle_moving)) {
+  // Personal: not when always-on lateral is active
+  if (brake_pressed && (!brake_pressed_prev || vehicle_moving) && !always_on_lateral) {
     controls_allowed = false;
   }
   brake_pressed_prev = brake_pressed;
 
   // exit controls on rising edge of regen paddle
-  if (regen_braking && (!regen_braking_prev || vehicle_moving)) {
+  // Personal: not when always-on lateral is active
+  if (regen_braking && (!regen_braking_prev || vehicle_moving) && !always_on_lateral) {
     controls_allowed = false;
   }
   regen_braking_prev = regen_braking;
@@ -393,6 +396,7 @@ int set_safety_hooks(uint16_t mode, uint16_t param) {
   // reset state set by safety mode
   safety_mode_cnt = 0U;
   relay_malfunction = false;
+  always_on_lateral = false;
   gas_pressed = false;
   gas_pressed_prev = false;
   brake_pressed = false;

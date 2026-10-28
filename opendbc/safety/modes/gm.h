@@ -28,6 +28,7 @@ typedef enum {
 } GmHardware;
 static GmHardware gm_hw = GM_ASCM;
 static bool gm_pcm_cruise = false;
+static bool gm_cruise_main_on = false;  // Personal: ECMEngineStatus CruiseMainOn, only used for always-on lateral
 
 static void gm_rx_hook(const CANPacket_t *msg) {
   const int GM_STANDSTILL_THRSLD = 10;  // 0.311kph
@@ -73,6 +74,12 @@ static void gm_rx_hook(const CANPacket_t *msg) {
 
   if (msg_matches(msg, 0xC9U, 0U) && (gm_hw == GM_CAM)) {
     brake_pressed = GET_BIT(msg, 40U);
+
+    // Personal: always-on lateral ends when the cruise main switch is turned off
+    gm_cruise_main_on = GET_BIT(msg, 29U);
+    if (always_on_lateral && !gm_cruise_main_on) {
+      controls_allowed = false;
+    }
   }
 
   if (msg_matches(msg, 0x1C4U, 0U)) {
@@ -81,7 +88,15 @@ static void gm_rx_hook(const CANPacket_t *msg) {
     // enter controls on rising edge of ACC, exit controls when ACC off
     if (gm_pcm_cruise) {
       bool cruise_engaged = (msg->data[1] >> 5) != 0U;
-      pcm_cruise_check(cruise_engaged);
+      if (always_on_lateral) {
+        // Personal: rising edge of ACC (with main on) enters controls, ACC off does NOT exit controls
+        if (cruise_engaged && !cruise_engaged_prev && gm_cruise_main_on) {
+          controls_allowed = true;
+        }
+        cruise_engaged_prev = cruise_engaged;
+      } else {
+        pcm_cruise_check(cruise_engaged);
+      }
     }
   }
 
@@ -230,6 +245,7 @@ static safety_config gm_init(uint16_t param) {
   }
 
   gm_pcm_cruise = (gm_hw == GM_CAM);
+  gm_cruise_main_on = false;
 
   safety_config ret;
   if (gm_hw == GM_CAM) {
@@ -250,6 +266,9 @@ static safety_config gm_init(uint16_t param) {
   } else {
     ret = BUILD_SAFETY_CFG(gm_rx_checks, GM_ASCM_TX_MSGS);
   }
+
+  // Personal: always-on lateral only with the camera harness on stock cruise (gm_pcm_cruise is final here)
+  always_on_lateral = ((alternative_experience & ALT_EXP_ALWAYS_ON_LATERAL) != 0) && gm_pcm_cruise && (gm_hw == GM_CAM);
 
   const bool gm_ev = GET_FLAG(param, GM_PARAM_EV);
   if (gm_ev) {

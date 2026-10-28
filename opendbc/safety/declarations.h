@@ -327,7 +327,14 @@ extern CurvatureSteeringState curvature_state;
 // This flag allows AEB to be commanded from openpilot.
 #define ALT_EXP_ALLOW_AEB 16
 
+// Personal: disables brake-press (and regen) disengagement of lateral control, so steering stays engaged through brake taps.
+// Only honored by safety modes that opt in (currently GM camera harness with stock cruise).
+#define ALT_EXP_ALWAYS_ON_LATERAL 32
+
 extern int alternative_experience;
+
+// Personal: set by a safety mode's init when ALT_EXP_ALWAYS_ON_LATERAL is requested and supported
+extern bool always_on_lateral;
 
 // time since safety mode has been changed
 extern uint32_t safety_mode_cnt;

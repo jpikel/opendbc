@@ -988,7 +988,11 @@ class SafetyTest(SafetyTestBase):
               continue
             if {attr, current_test}.issubset({'TestGmCameraSafety', 'TestGmCameraLongitudinalSafety', 'TestGmAscmSafety',
                                               'TestGmCameraEVSafety', 'TestGmCameraLongitudinalEVSafety', 'TestGmAscmEVSafety',
-                                              'TestGmSdgmCameraLongitudinalSafety'}):
+                                              'TestGmSdgmCameraLongitudinalSafety',
+                                              # Personal: always-on lateral variants share the same TX msgs
+                                              'TestGmAscmAlwaysOnLateralIgnoredSafety', 'TestGmCameraAlwaysOnLateralSafety',
+                                              'TestGmCameraEVAlwaysOnLateralSafety', 'TestGmCameraLongAlwaysOnLateralIgnoredSafety',
+                                              'TestGmSdgmCameraLongAlwaysOnLateralIgnoredSafety'}):
               continue
             if attr.startswith('TestFord') and current_test.startswith('TestFord'):
               continue
