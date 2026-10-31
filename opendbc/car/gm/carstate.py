@@ -30,6 +30,7 @@ class CarState(CarStateBase):
     self.buttons_counter = 0
 
     self.distance_button = 0
+    self.lka_button = 0
 
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):
     if not self.CP.pcmCruise:
@@ -49,8 +50,10 @@ class CarState(CarStateBase):
 
     prev_cruise_buttons = self.cruise_buttons
     prev_distance_button = self.distance_button
+    prev_lka_button = self.lka_button
     self.cruise_buttons = pt_cp.vl["ASCMSteeringButton"]["ACCButtons"]
     self.distance_button = pt_cp.vl["ASCMSteeringButton"]["DistanceButton"]
+    self.lka_button = pt_cp.vl["ASCMSteeringButton"]["LKAButton"]
     self.buttons_counter = pt_cp.vl["ASCMSteeringButton"]["RollingCounter"]
     self.pscm_status = copy.copy(pt_cp.vl["PSCMStatus"])
 
@@ -151,7 +154,9 @@ class CarState(CarStateBase):
         *create_button_events(self.cruise_buttons, prev_cruise_buttons, BUTTONS_DICT,
                               unpressed_btn=CruiseButtons.UNPRESS),
         *create_button_events(self.distance_button, prev_distance_button,
-                              {1: ButtonType.gapAdjustCruise})
+                              {1: ButtonType.gapAdjustCruise}),
+        *create_button_events(self.lka_button, prev_lka_button,
+                              {1: ButtonType.lkas}),
       ]
 
     if ret.vEgo < self.CP.minSteerSpeed:
