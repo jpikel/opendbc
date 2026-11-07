@@ -213,6 +213,7 @@ class CarInterface(CarInterfaceBase):
 
     elif candidate == CAR.CADILLAC_XT6:
       ret.steerActuatorDelay = 0.3  # liveDelay converged to 0.33-0.37s across multiple drives
+      ret.steerLimitTimer = 1.0  # don't alert on brief max-torque moments at highway curve entry
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
 
     elif candidate == CAR.CHEVROLET_VOLT_2019:
