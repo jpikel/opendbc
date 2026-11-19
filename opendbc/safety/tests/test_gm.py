@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import unittest
+from collections.abc import Callable
 
 from opendbc.car.gm.values import GMSafetyFlags
 from opendbc.car.structs import CarParams
-from opendbc.safety import ALTERNATIVE_EXPERIENCE
 import opendbc.safety.tests.common as common
 from opendbc.safety.tests.common import CANPackerSafety
+from opendbc.safety.tests.libsafety import libsafety_py
 
 
 class Buttons:
@@ -27,6 +28,10 @@ class GmLongitudinalBase(common.CarSafetyTest, common.LongitudinalGasBrakeSafety
 
   PCM_CRUISE = False  # openpilot can control the PCM state if longitudinal
 
+  BRAKE_BUS: int
+  packer_chassis: CANPackerSafety
+  _button_msg: Callable[..., libsafety_py.CANPacket]
+
   def _send_brake_msg(self, brake):
     values = {"FrictionBrakeCmd": -brake}
     return self.packer_chassis.make_can_msg_safety("EBCMFrictionBrakeCmd", self.BRAKE_BUS, values)
@@ -34,6 +39,11 @@ class GmLongitudinalBase(common.CarSafetyTest, common.LongitudinalGasBrakeSafety
   def _send_gas_msg(self, gas):
     values = {"GasRegenCmd": gas}
     return self.packer.make_can_msg_safety("ASCMGasRegenCmd", 0, values)
+
+  def test_gas_apply(self):
+    # apply bit is only allowed with controls allowed
+    values = {"GasRegenCmd": self.INACTIVE_GAS, "GasRegenCmdActive": 1}
+    self.assertFalse(self._tx(self.packer.make_can_msg_safety("ASCMGasRegenCmd", 0, values)))
 
   # override these tests from CarSafetyTest, GM longitudinal uses button enable
   def _pcm_status_msg(self, enable):
@@ -103,8 +113,8 @@ class TestGmSafetyBase(common.CarSafetyTest, common.DriverTorqueSteeringSafetyTe
     else:
       raise NotImplementedError
 
-  def _speed_msg(self, speed):
-    values = {"%sWheelSpd" % s: speed for s in ["RL", "RR"]}
+  def _speed_msg(self, speed, wheels=("RL", "RR")):
+    values = {"%sWheelSpd" % s: speed for s in wheels}
     return self.packer.make_can_msg_safety("EBCMWheelSpdRear", 0, values)
 
   def _user_brake_msg(self, brake):
@@ -131,6 +141,12 @@ class TestGmSafetyBase(common.CarSafetyTest, common.DriverTorqueSteeringSafetyTe
   def _button_msg(self, buttons):
     values = {"ACCButtons": buttons}
     return self.packer.make_can_msg_safety("ASCMSteeringButton", self.BUTTONS_BUS, values)
+
+  def test_vehicle_moving_single_wheel(self):
+    # vehicle is moving if any checked wheel is above standstill
+    for wheel in ("RL", "RR"):
+      self.assertTrue(self._rx(self._speed_msg(self.STANDSTILL_THRESHOLD + 1, wheels=(wheel,))))
+      self.assertTrue(self.safety.get_vehicle_moving())
 
 
 class TestGmEVSafetyBase(TestGmSafetyBase):
@@ -180,6 +196,10 @@ class TestGmCameraSafety(TestGmCameraSafetyBase):
   def SAFETY_PARAM(self):
     return GMSafetyFlags.HW_CAM | self.EXTRA_SAFETY_PARAM
 
+  def test_rx_buttons_do_not_enable(self):
+    self._rx(self.packer.make_can_msg_safety("ASCMSteeringButton", 0, {"ACCButtons": Buttons.RES_ACCEL}))
+    self.assertFalse(self.safety.get_controls_allowed())
+
   def test_buttons(self):
     # Only CANCEL button is allowed while cruise is enabled
     self.safety.set_controls_allowed(0)
@@ -228,186 +248,6 @@ class TestGmSdgmCameraLongitudinalSafety(TestGmCameraLongitudinalSafety):
 
 
 class TestGmCameraLongitudinalEVSafety(TestGmCameraLongitudinalSafety, TestGmEVSafetyBase):
-  pass
-
-
-class AlwaysOnLateralMixin:
-  # Personal: turns on ALT_EXP_ALWAYS_ON_LATERAL for the GM test classes below.
-  # init_tests() (called by SafetyTestBase.setUp) clears alternative_experience, so set it and re-init the hooks.
-  def setUp(self):
-    super().setUp()
-    self.safety.set_alternative_experience(ALTERNATIVE_EXPERIENCE.ALWAYS_ON_LATERAL)
-    self._reset_safety_hooks()
-    self.safety.init_tests()  # restores safety_mode_cnt; always_on_lateral was latched by the safety init above
-
-
-class TestGmAscmAlwaysOnLateralIgnoredSafety(AlwaysOnLateralMixin, TestGmAscmSafety):
-  # flag is ignored on ASCM: every inherited test (brake disengages, button enable) must still hold
-  pass
-
-
-class TestGmCameraLongAlwaysOnLateralIgnoredSafety(AlwaysOnLateralMixin, TestGmCameraLongitudinalSafety):
-  # flag is ignored on camera longitudinal (not stock cruise): brake still disengages
-  pass
-
-
-class TestGmSdgmCameraLongAlwaysOnLateralIgnoredSafety(AlwaysOnLateralMixin, TestGmSdgmCameraLongitudinalSafety):
-  pass
-
-
-class AlwaysOnLateralCameraMixin(AlwaysOnLateralMixin):
-  # Personal: shared helpers/tests for stock-cruise camera harness with always-on lateral
-  def setUp(self):
-    super().setUp()
-    self._rx(self._main_msg(True))
-
-  def _main_msg(self, main_on, brake=0):
-    values = {"CruiseMainOn": main_on, "BrakePressed": brake}
-    return self.packer.make_can_msg_safety("ECMEngineStatus", 0, values)
-
-  def _user_brake_msg(self, brake):
-    # base brake helper must keep the main switch on, otherwise it would end always-on lateral
-    return self._main_msg(True, brake)
-
-  def _steer_allowed(self, torque=5):
-    self.safety.set_desired_torque_last(0)
-    self.safety.set_rt_torque_last(0)
-    return self._tx(self._torque_cmd_msg(torque, steer_req=1))
-
-  # --- overrides of base tests whose expectation is brake/regen/ACC disengage ---
-
-  def test_allow_user_brake_at_zero_speed(self, _user_brake_msg=None, get_brake_pressed_prev=None):
-    # always-on lateral: a brake (or regen, via the generated twin) press never disengages, even on its rising edge
-    _user_brake_msg = _user_brake_msg or self._user_brake_msg
-    self._rx(self._vehicle_moving_msg(0))
-    self._rx(_user_brake_msg(0))
-    self.safety.set_controls_allowed(1)
-    self._rx(_user_brake_msg(1))
-    self.assertTrue(self.safety.get_controls_allowed())
-    self._rx(_user_brake_msg(0))
-    self._rx(_user_brake_msg(1))
-    self.assertTrue(self.safety.get_controls_allowed())
-    self._rx(_user_brake_msg(0))
-
-  def test_not_allow_user_brake_when_moving(self, _user_brake_msg=None, get_brake_pressed_prev=None):
-    # always-on lateral: brake (or regen) press while moving does not disengage lateral
-    _user_brake_msg = _user_brake_msg or self._user_brake_msg
-    self.safety.set_controls_allowed(1)
-    self._rx(self._vehicle_moving_msg(self.STANDSTILL_THRESHOLD + 1))
-    self._rx(_user_brake_msg(1))
-    self._rx(_user_brake_msg(1))
-    self.assertTrue(self.safety.get_controls_allowed())
-    self._rx(self._vehicle_moving_msg(0))
-
-  def test_disable_control_allowed_from_cruise(self):
-    # always-on lateral: stock ACC turning off must not clear controls_allowed
-    self.safety.set_controls_allowed(1)
-    self._rx(self._pcm_status_msg(False))
-    self.assertTrue(self.safety.get_controls_allowed())
-
-  # --- new tests ---
-
-  def test_brake_keeps_controls_and_steering(self):
-    self._rx(self._vehicle_moving_msg(self.STANDSTILL_THRESHOLD + 10))
-    self._rx(self._pcm_status_msg(True))
-    self.assertTrue(self.safety.get_controls_allowed())
-    for _ in range(3):
-      self._rx(self._user_brake_msg(1))
-      self.assertTrue(self.safety.get_controls_allowed())
-      self.assertTrue(self.safety.get_brake_pressed_prev())
-      self.assertTrue(self._steer_allowed())
-      self._rx(self._user_brake_msg(0))
-      self.assertTrue(self.safety.get_controls_allowed())
-      self.assertTrue(self._steer_allowed())
-
-  def test_acc_disengage_keeps_controls_and_steering(self):
-    self._rx(self._vehicle_moving_msg(self.STANDSTILL_THRESHOLD + 10))
-    self._rx(self._pcm_status_msg(True))
-    self._rx(self._pcm_status_msg(False))
-    self.assertFalse(self.safety.get_cruise_engaged_prev())
-    self.assertTrue(self.safety.get_controls_allowed())
-    self.assertTrue(self._steer_allowed())
-
-  def test_acc_reengage_while_steering_only_is_noop(self):
-    self._rx(self._pcm_status_msg(True))
-    self._rx(self._pcm_status_msg(False))
-    self.assertTrue(self.safety.get_controls_allowed())
-    self._rx(self._pcm_status_msg(True))
-    self.assertTrue(self.safety.get_controls_allowed())
-    self.assertTrue(self.safety.get_cruise_engaged_prev())
-    self.assertTrue(self._steer_allowed())
-
-  def test_main_off_clears_controls_and_blocks_steering(self):
-    self._rx(self._pcm_status_msg(True))
-    self.assertTrue(self._steer_allowed())
-    self._rx(self._main_msg(False))
-    self.assertFalse(self.safety.get_controls_allowed())
-    self.assertFalse(self._steer_allowed())
-    for _ in range(5):
-      self._rx(self._main_msg(False))
-    self.assertFalse(self.safety.get_controls_allowed())
-    self.assertFalse(self._steer_allowed())
-
-  def test_main_off_while_steering_only(self):
-    self._rx(self._pcm_status_msg(True))
-    self._rx(self._pcm_status_msg(False))
-    self.assertTrue(self.safety.get_controls_allowed())
-    self._rx(self._main_msg(False))
-    self.assertFalse(self.safety.get_controls_allowed())
-
-  def test_main_off_during_brake(self):
-    self._rx(self._vehicle_moving_msg(self.STANDSTILL_THRESHOLD + 10))
-    self._rx(self._pcm_status_msg(True))
-    self._rx(self._user_brake_msg(1))
-    self.assertTrue(self.safety.get_controls_allowed())
-    self._rx(self._main_msg(False, brake=1))
-    self.assertFalse(self.safety.get_controls_allowed())
-    self.assertFalse(self._steer_allowed())
-
-  def test_main_off_then_acc_engage_edge(self):
-    self._rx(self._pcm_status_msg(True))
-    self._rx(self._main_msg(False))
-    self.assertFalse(self.safety.get_controls_allowed())
-    # stale ACC edge while main is off must not engage
-    self._rx(self._pcm_status_msg(False))
-    self._rx(self._pcm_status_msg(True))
-    self.assertFalse(self.safety.get_controls_allowed())
-    # main back on alone does not engage (needs a new ACC rising edge)
-    self._rx(self._main_msg(True))
-    self.assertFalse(self.safety.get_controls_allowed())
-    self._rx(self._pcm_status_msg(True))
-    self.assertFalse(self.safety.get_controls_allowed())
-    # new ACC rising edge with main on engages
-    self._rx(self._pcm_status_msg(False))
-    self._rx(self._pcm_status_msg(True))
-    self.assertTrue(self.safety.get_controls_allowed())
-
-  def test_other_faults_still_disengage(self):
-    # missing/invalid rx checks clear controls regardless of the flag
-    self._rx(self._pcm_status_msg(True))
-    self.assertTrue(self.safety.get_controls_allowed())
-    self.safety.set_timer(int(2e6))
-    self.safety.safety_tick()
-    self.assertFalse(self.safety.get_controls_allowed())
-
-  def test_torque_limits_still_apply(self):
-    self._rx(self._pcm_status_msg(True))
-    self.safety.set_desired_torque_last(0)
-    self.safety.set_rt_torque_last(0)
-    self.assertFalse(self._tx(self._torque_cmd_msg(self.MAX_RATE_UP + 1, steer_req=1)))
-    self.assertFalse(self._tx(self._torque_cmd_msg(301, steer_req=1)))
-
-  def test_steer_blocked_when_controls_not_allowed(self):
-    self.assertFalse(self.safety.get_controls_allowed())
-    self.assertFalse(self._steer_allowed())
-
-
-class TestGmCameraAlwaysOnLateralSafety(AlwaysOnLateralCameraMixin, TestGmCameraSafety):
-  pass
-
-
-class TestGmCameraEVAlwaysOnLateralSafety(AlwaysOnLateralCameraMixin, TestGmCameraEVSafety):
-  # also exercises the regen paddle path; the generated regen tests call the overridden brake tests above
   pass
 
 

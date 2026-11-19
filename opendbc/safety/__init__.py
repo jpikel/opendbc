@@ -5,7 +5,5 @@ LEN_TO_DLC = {length: dlc for (dlc, length) in enumerate(DLC_TO_LEN)}
 
 class ALTERNATIVE_EXPERIENCE:
   DEFAULT = 0
-  DISABLE_STOCK_AEB = 2
   RAISE_LONGITUDINAL_LIMITS_TO_ISO_MAX = 8
   ALLOW_AEB = 16
-  ALWAYS_ON_LATERAL = 32  # Personal: keep lateral engaged through brake/regen/ACC cancel (GM cam, stock cruise)
