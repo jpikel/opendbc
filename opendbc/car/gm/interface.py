@@ -215,6 +215,9 @@ class CarInterface(CarInterfaceBase):
       ret.steerActuatorDelay = 0.3  # liveDelay converged to 0.33-0.37s across multiple drives
       ret.steerLimitTimer = 1.0  # don't alert on brief max-torque moments at highway curve entry
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+      # torqued converged to -0.30 on two drives (12000 points); live torque params are off for GM,
+      # so without this the integrator has to hold ~0.3 m/s^2 all the time
+      ret.lateralTuning.torque.latAccelOffset = -0.3
 
     elif candidate == CAR.CHEVROLET_VOLT_2019:
       ret.steerActuatorDelay = 0.2

@@ -80,7 +80,7 @@ static void gm_rx_hook(const CANPacket_t *msg) {
 
 static bool gm_tx_hook(const CANPacket_t *msg) {
   const TorqueSteeringLimits GM_STEERING_LIMITS = {
-    .max_torque = 300,
+    .max_torque = 325,  // personal trial for the XT6 (stock 300), see CarControllerParams.STEER_MAX
     .max_rate_up = 10,
     .max_rate_down = 15,
     .driver_torque_allowance = 65,

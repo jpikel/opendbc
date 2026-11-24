@@ -36,6 +36,12 @@ class CarControllerParams:
     # Gas/brake lookups
     self.MAX_BRAKE = 400  # ~ -4.0 m/s^2 with regen
 
+    if CP.carFingerprint == CAR.CADILLAC_XT6:
+      # Personal trial: 3.25 Nm. The PSCM delivered exactly what was commanded up to 3.0 Nm with no
+      # LKATorqueDeliveredStatus faults; right-hand highway curves saturate at 3.0 Nm.
+      # Must not exceed GM_STEERING_LIMITS.max_torque in safety/modes/gm.h
+      self.STEER_MAX = 325
+
     if CP.carFingerprint in (CAMERA_ACC_CAR | SDGM_CAR):
       self.MAX_GAS = 1346.0
       self.MAX_ACC_REGEN = -540.0
